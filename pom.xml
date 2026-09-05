@@ -6,7 +6,7 @@
 
     <groupId>io.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>jar</packaging>
 
     <name>policy-rules</name>
@@ -16,7 +16,7 @@
         external source.
     </description>
 
-    <!-- url, scm y developers son obligatorios en Maven Central. -->
+    <!-- url, scm and developers are mandatory on Maven Central. -->
     <url>https://github.com/sebas2409/policy-rules</url>
 
     <scm>
@@ -115,12 +115,12 @@
                             <doclint>all</doclint>
                             <quiet>true</quiet>
                             <!--
-                                Sin esto, el Automatic-Module-Name del manifiesto
-                                hace que el plugin trate el proyecto como modular
-                                y genere un patch-module con valor null y sin
-                                sourcepath, con lo que javadoc falla con
+                                Without this, the Automatic-Module-Name in the
+                                manifest makes the plugin treat the project as
+                                modular and emit a patch-module with a null value
+                                and no sourcepath, so javadoc fails with
                                 "No source files for package io.github.sebas2409.policyrules".
-                                En modo classpath la documentación sale completa.
+                                In classpath mode the documentation is complete.
                             -->
                             <legacyMode>true</legacyMode>
                         </configuration>
@@ -138,9 +138,9 @@
         </profile>
 
         <!--
-            Publicación en Maven Central. Se usa junto al perfil release desde
-            el workflow: mvn -Prelease,central deploy
-            Requiere una clave GPG y las credenciales del Central Portal.
+            Publication to Maven Central. Used together with the release profile
+            from the workflow: mvn -Prelease,central deploy
+            Requires a GPG key and the Central Portal credentials.
         -->
         <profile>
             <id>central</id>
@@ -158,7 +158,7 @@
                                     <goal>sign</goal>
                                 </goals>
                                 <configuration>
-                                    <!-- La passphrase llega por MAVEN_GPG_PASSPHRASE. -->
+                                    <!-- The passphrase arrives through MAVEN_GPG_PASSPHRASE. -->
                                     <gpgArguments>
                                         <arg>--pinentry-mode</arg>
                                         <arg>loopback</arg>
@@ -171,18 +171,19 @@
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
                         <!--
-                            0.7.0 subía bien pero reventaba al leer la respuesta
-                            del portal, que ya devuelve un campo "warnings" que
-                            esa versión no conoce.
+                            0.7.0 uploaded fine but blew up while reading the
+                            portal response, which now returns a "warnings" field
+                            that version does not know about.
                         -->
                         <version>0.11.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
                             <!--
-                                Publica sin pasar por el botón del portal, y
-                                espera al resultado: si Central rechaza el
-                                artefacto, el workflow falla y no crea el tag.
+                                Publishes without going through the portal
+                                button, and waits for the outcome: if Central
+                                rejects the artifact the workflow fails and no
+                                tag is created.
                             -->
                             <autoPublish>true</autoPublish>
                             <waitUntil>published</waitUntil>

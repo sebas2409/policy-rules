@@ -1,30 +1,31 @@
-# Integración
+# Integration
 
-La librería no trae observabilidad, persistencia ni caché. No es una carencia:
-son las tres cosas que cada proyecto ya tiene resueltas a su manera, y meterlas
-aquí obligaría a acatar la decisión de la librería y arrastraría dependencias.
+The library ships no observability, persistence or caching. That is not an
+omission: those are the three things every project already solves its own way,
+and bundling them here would force the library's choice on everyone and drag in
+dependencies.
 
-Como `Policy` y `Rule` son interfaces pequeñas, añadirlas donde se usan es un
-decorador de pocas líneas. Aquí están los patrones listos para copiar.
+Since `Policy` and `Rule` are small interfaces, adding them where they are used
+is a decorator of a few lines. Here are the ready-to-copy patterns.
 
-- [Observabilidad](#observabilidad)
-- [Cachear reglas compiladas](#cachear-reglas-compiladas)
-- [Cargar definiciones](#cargar-definiciones)
+- [Observability](#observability)
+- [Caching compiled rules](#caching-compiled-rules)
+- [Loading definitions](#loading-definitions)
 - [Spring](#spring)
-- [Manejo de errores en el borde](#manejo-de-errores-en-el-borde)
+- [Error handling at the boundary](#error-handling-at-the-boundary)
 - [Tests](#tests)
 
 ---
 
-## Observabilidad
+## Observability
 
-Un decorador que mide y registra, sin tocar la decisión:
+A decorator that measures and logs without touching the decision:
 
 ```java
 public final class ObservedPolicy<T> implements Policy<T> {
 
     private final Policy<T> delegate;
-    private final MeterRegistry meters;          // tu librería de métricas
+    private final MeterRegistry meters;          // your metrics library
     private static final Logger log = LoggerFactory.getLogger(ObservedPolicy.class);
 
     public ObservedPolicy(Policy<T> delegate, MeterRegistry meters) {
@@ -56,42 +57,42 @@ public final class ObservedPolicy<T> implements Policy<T> {
 }
 ```
 
-Se aplica donde se construye la política, sin tocar el resto del código:
+It is applied where the policy is built, without touching the rest of the code:
 
 ```java
 Policy<Booking> observed = new ObservedPolicy<>(canBeConfirmed, meters);
 ```
 
-Tres criterios que conviene respetar:
+Three criteria worth respecting:
 
-- **Registra códigos, no mensajes ni contexto.** Los códigos son estables y
-  agregables; los mensajes y los metadatos pueden contener datos personales.
-- **Un fallo de telemetría no debe cambiar una decisión de negocio.** Si tu
-  cliente de métricas puede lanzar, captura la excepción dentro del decorador.
-- **Distingue permitido de denegado en los niveles.** Denegar es normal
-  (`INFO`/`DEBUG`); solo una excepción inesperada merece `ERROR`.
+- **Log codes, not messages or context.** Codes are stable and aggregatable;
+  messages and metadata may contain personal data.
+- **A telemetry failure must not change a business decision.** If your metrics
+  client can throw, catch it inside the decorator.
+- **Tell allowed from denied in the levels.** Denying is normal (`INFO`/`DEBUG`);
+  only an unexpected exception deserves `ERROR`.
 
-Para las trazas, el patrón es el mismo con un `Span` alrededor de `evaluate`,
-usando `id()` como nombre de la operación.
+For traces the pattern is the same, with a `Span` around `evaluate` using `id()`
+as the operation name.
 
 ---
 
-## Cachear reglas compiladas
+## Caching compiled rules
 
-Compilar en cada petición es un desperdicio. Como las reglas compiladas son
-inmutables, se comparten sin más:
+Compiling on every request is a waste. Since compiled rules are immutable, they
+can be shared as they are:
 
 ```java
 public final class CachedRuleSource {
 
-    private final RuleStore store;                     // tu acceso a datos
+    private final RuleStore store;                     // your data access
     private final RuleCompiler<Booking> compiler;
     private final ConcurrentMap<String, Entry> cache = new ConcurrentHashMap<>();
 
     private record Entry(long version, Rule<Booking> rule) {}
 
     public Rule<Booking> rule(String ruleId) {
-        var stored = store.load(ruleId);               // documento + versión
+        var stored = store.load(ruleId);               // document plus version
         return cache.compute(ruleId, (id, cached) ->
                 cached != null && cached.version() == stored.version()
                         ? cached
@@ -102,49 +103,49 @@ public final class CachedRuleSource {
 }
 ```
 
-La clave está en **cómo se invalida**, y eso depende de tu almacén:
+The important part is **how it is invalidated**, and that depends on your store:
 
-| Estrategia | Cuándo |
-|------------|--------|
-| versión o `updatedAt` en el documento | lo más simple; una lectura barata por petición |
-| TTL corto (`Caffeine.expireAfterWrite`) | cuando un retraso de segundos es aceptable |
-| evento de invalidación | cuando el cambio debe propagarse ya y tienes bus de eventos |
-| recarga programada | pocas reglas, cambios poco frecuentes |
+| Strategy | When |
+|----------|------|
+| version or `updatedAt` in the document | simplest; one cheap read per request |
+| short TTL (`Caffeine.expireAfterWrite`) | when a few seconds of staleness is acceptable |
+| invalidation event | when the change must propagate now and you have an event bus |
+| scheduled reload | few rules, infrequent changes |
 
-Si el documento no cambia nunca en caliente, lo más simple es compilar al
-arrancar y guardar la regla en un campo `final`.
+If the document never changes at runtime, the simplest option is to compile at
+start-up and keep the rule in a `final` field.
 
 ---
 
-## Cargar definiciones
+## Loading definitions
 
-La librería solo necesita un `Map<String, Object>`.
+The library only needs a `Map<String, Object>`.
 
 ### MongoDB
 
 ```java
 Document stored = collection.find(eq("_id", "booking-eligibility")).first();
 if (stored == null) {
-    throw new IllegalStateException("Regla no configurada: booking-eligibility");
+    throw new IllegalStateException("Rule not configured: booking-eligibility");
 }
 
 RuleDefinition definition = RuleDefinitionCodec.read(stored.get("rule", Document.class));
 ```
 
-`Document` implementa `Map<String, Object>`, así que se pasa directamente. Ojo con
-los tipos que devuelve el driver: un entero puede llegar como `Integer` o `Long`,
-y un decimal como `Decimal128`. `RuleParameters` normaliza los `Number`; para
-`Decimal128` (que no lo es) usa `.toBigDecimal()` al guardar o registra un
-conversor propio.
+`Document` implements `Map<String, Object>`, so it is passed straight through.
+Mind the types the driver returns: an integer may arrive as `Integer` or `Long`,
+and a decimal as `Decimal128`. `RuleParameters` normalizes anything that is a
+`Number`; for `Decimal128` (which is not) call `.toBigDecimal()` when storing, or
+register a converter of your own.
 
-### JPA / columna JSON
+### JPA / JSON column
 
 ```java
 @Entity
 class StoredRule {
     @Id String id;
     long version;
-    @Column(columnDefinition = "jsonb") String rule;   // el árbol serializado
+    @Column(columnDefinition = "jsonb") String rule;   // the serialized tree
 }
 ```
 
@@ -155,7 +156,7 @@ Map<String, Object> document = objectMapper.readValue(
 RuleDefinition definition = RuleDefinitionCodec.read(document);
 ```
 
-### Fichero JSON o YAML
+### JSON or YAML file
 
 ```java
 try (var input = Files.newInputStream(Path.of("rules/booking-eligibility.json"))) {
@@ -165,7 +166,7 @@ try (var input = Files.newInputStream(Path.of("rules/booking-eligibility.json"))
 }
 ```
 
-### Serializar hacia el almacén
+### Serializing back to the store
 
 ```java
 Map<String, Object> document = RuleDefinitionCodec.write(definition);
@@ -176,7 +177,7 @@ collection.replaceOne(eq("_id", ruleId), new Document(document), new ReplaceOpti
 
 ## Spring
 
-Las políticas son objetos inmutables: encajan como beans singleton.
+Policies are immutable objects: they fit as singleton beans.
 
 ```java
 @Configuration
@@ -204,16 +205,16 @@ class PolicyConfiguration {
     Policy<Booking> bookingConfirmationPolicy() {
         return Policies.allOf("booking-can-be-confirmed", List.of(
                 Policies.require("booking-must-be-active", Booking::active,
-                        "BOOKING_INACTIVE", "La reserva debe estar activa"),
+                        "BOOKING_INACTIVE", "The booking must be active"),
                 Policies.forbid("booking-must-not-be-cancelled", Booking::cancelled,
-                        "BOOKING_CANCELLED", "La reserva fue cancelada")
+                        "BOOKING_CANCELLED", "The booking was cancelled")
         ));
     }
 }
 ```
 
-Si una política depende de una regla configurable, inyecta la fuente cacheada y
-compón en el momento de evaluar, no en el de crear el bean:
+If a policy depends on a configurable rule, inject the cached source and compose
+at evaluation time, not at bean-creation time:
 
 ```java
 @Service
@@ -225,7 +226,7 @@ class BookingConfirmationService {
     PolicyResult check(Booking booking) {
         var eligibility = Policies.require(
                 "booking-eligibility", rules.rule("booking-eligibility"),
-                "NOT_ELIGIBLE", "No cumple la regla de elegibilidad");
+                "NOT_ELIGIBLE", "Does not meet the eligibility rule");
 
         return staticPolicy.evaluate(booking)
                 .combine(eligibility.evaluate(booking));
@@ -233,8 +234,9 @@ class BookingConfirmationService {
 }
 ```
 
-Al arrancar conviene comprobar que la configuración almacenada es compilable, y
-fallar el arranque si no lo es, en vez de descubrirlo con la primera petición:
+At start-up it is worth checking that the stored configuration compiles, and
+failing the start-up if it does not, rather than discovering it with the first
+request:
 
 ```java
 @EventListener(ApplicationReadyEvent.class)
@@ -245,39 +247,39 @@ void verifyStoredRules() {
 
 ---
 
-## Manejo de errores en el borde
+## Error handling at the boundary
 
-Hay dos familias de fallo bien distintas, y conviene mapearlas a respuestas
-distintas:
+There are two clearly different failure families, and they deserve different
+responses:
 
 ```java
 @RestControllerAdvice
 class PolicyExceptionHandler {
 
-    // La petición no cumple las reglas de negocio: culpa del cliente.
+    // The request does not meet the business rules: the caller's fault.
     @ExceptionHandler(PolicyViolationException.class)
     ResponseEntity<List<PolicyViolation>> denied(PolicyViolationException exception) {
         return ResponseEntity.unprocessableEntity().body(exception.violations());
     }
 
-    // La configuración almacenada está rota: culpa nuestra.
+    // The stored configuration is broken: our fault.
     @ExceptionHandler(RuleConfigurationException.class)
     ResponseEntity<String> misconfigured(RuleConfigurationException exception) {
-        log.error("Regla mal configurada", exception);
+        log.error("Misconfigured rule", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body("Configuración de reglas inválida");
+                .body("Invalid rule configuration");
     }
 }
 ```
 
-No devuelvas el mensaje de una `RuleConfigurationException` a un cliente final:
-incluye nombres de tipo y valores de configuración.
+Do not return the message of a `RuleConfigurationException` to an end user: it
+includes type names and configuration values.
 
 ---
 
 ## Tests
 
-**Políticas de código:** no hace falta infraestructura.
+**Code policies:** no infrastructure needed.
 
 ```java
 @Test
@@ -288,11 +290,11 @@ void reportsEveryReason() {
 }
 ```
 
-Asserta sobre `codes()` y no sobre los mensajes: los códigos son el contrato, los
-textos cambian.
+Assert on `codes()` rather than on messages: codes are the contract, texts
+change.
 
-**Tipos de regla configurables:** pruébalos a través del compilador, que es como
-se usarán de verdad.
+**Configurable rule types:** test them through the compiler, which is how they
+will really be used.
 
 ```java
 @Test
@@ -311,9 +313,9 @@ void rejectsAMissingParameter() {
 }
 ```
 
-**Configuración real:** un test que compile todos los documentos guardados en el
-repositorio (o en el entorno de pruebas) detecta un tipo mal escrito antes de que
-llegue a producción.
+**Real configuration:** a test that compiles every document stored in the
+repository (or in the test environment) catches a mistyped type before it reaches
+production.
 
 ```java
 @Test

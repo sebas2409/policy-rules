@@ -5,90 +5,91 @@
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Java](https://img.shields.io/badge/Java-25-orange)
 
-Librería Java para expresar **reglas de negocio** y **políticas** como objetos
-componibles, incluyendo reglas cuya forma se decide **en configuración** y no en
-el código.
+A Java library for expressing **business rules** and **policies** as composable
+objects, including rules whose shape is decided by **configuration** rather than
+by code.
 
-- **Sin dependencias.** Solo la biblioteca estándar de Java 25.
-- **Sin infraestructura.** No lee de una base de datos, no escribe logs, no
-  depende de ningún framework. Eso lo pone el proyecto que la usa.
-- **Inmutable y segura entre hilos.** Todo lo que devuelve la librería se
-  construye una vez y se puede compartir.
-
----
-
-## Índice
-
-- [El problema](#el-problema)
-- [Instalación](#instalación)
-- [Ejemplo en un minuto](#ejemplo-en-un-minuto)
-- [Los cuatro conceptos](#los-cuatro-conceptos)
-- [Reglas configurables](#reglas-configurables)
-- [Mapa de la API](#mapa-de-la-api)
-- [Qué no incluye y por qué](#qué-no-incluye-y-por-qué)
-- [Documentación](#documentación)
-- [Compilar y publicar](#compilar-y-publicar)
+- **No dependencies.** Only the Java 25 standard library.
+- **No infrastructure.** It does not read from a database, write logs, or depend
+  on a framework. That is left to the project using it.
+- **Immutable and thread-safe.** Everything the library returns is built once and
+  can be shared.
 
 ---
 
-## El problema
+## Contents
 
-Las condiciones de negocio suelen acabar mezcladas dentro de los servicios:
+- [The problem](#the-problem)
+- [Installation](#installation)
+- [One-minute example](#one-minute-example)
+- [The four concepts](#the-four-concepts)
+- [Configurable rules](#configurable-rules)
+- [API map](#api-map)
+- [What it leaves out, and why](#what-it-leaves-out-and-why)
+- [Documentation](#documentation)
+- [Build and publish](#build-and-publish)
+
+---
+
+## The problem
+
+Business conditions tend to end up tangled inside service methods:
 
 ```java
 public void confirm(Booking booking) {
     if (!booking.active()) {
-        throw new IllegalStateException("La reserva no está activa");
+        throw new IllegalStateException("The booking is not active");
     }
     if (booking.customer().age() < 18) {
-        throw new IllegalStateException("Menor de edad");
+        throw new IllegalStateException("Underage customer");
     }
     if (booking.weeklyBookings() >= 3) {
-        throw new IllegalStateException("Límite semanal alcanzado");
+        throw new IllegalStateException("Weekly limit reached");
     }
     // ...
 }
 ```
 
-Esto tiene tres problemas concretos:
+That has three concrete problems:
 
-1. **La condición y su significado están pegados.** No se puede reutilizar
-   `age() >= 18` en otro caso de uso sin arrastrar el mensaje y la excepción.
-2. **Solo se reporta el primer fallo.** Un formulario o una API necesitan
-   normalmente *todos* los motivos a la vez.
-3. **Cambiar un umbral es un despliegue.** El `18` y el `3` son datos de
-   negocio, pero viven en el código.
+1. **The condition and its meaning are welded together.** You cannot reuse
+   `age() >= 18` in another use case without dragging along its message and its
+   exception.
+2. **Only the first failure is reported.** A form or an API usually needs *every*
+   reason at once.
+3. **Changing a threshold means a deployment.** The `18` and the `3` are business
+   data, yet they live in the code.
 
-`policy-rules` separa esas tres cosas: la condición (`Rule`), su significado
-(`Policy` → `PolicyResult`) y su origen (código o configuración).
+`policy-rules` separates those three things: the condition (`Rule`), its meaning
+(`Policy` → `PolicyResult`) and its origin (code or configuration).
 
 ---
 
-## Instalación
+## Installation
 
-Publicada en **Maven Central**: no hace falta ningún token ni repositorio extra.
+Published on **Maven Central**: no token and no extra repository needed.
 
 ```xml
 <dependency>
     <groupId>io.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("io.github.sebas2409:policy-rules:1.0.0")
+implementation("io.github.sebas2409:policy-rules:1.0.1")
 ```
 
-Requiere **Java 25**. La librería publica el nombre de módulo automático
-`io.github.sebas2409.policyrules`, así que funciona tanto en el classpath como
-en el module path.
+Requires **Java 25**. The library declares the automatic module name
+`io.github.sebas2409.policyrules`, so it works on the classpath and on the module
+path alike.
 
 ---
 
-## Ejemplo en un minuto
+## One-minute example
 
 ```java
 import io.github.sebas2409.policyrules.policy.*;
@@ -101,17 +102,17 @@ Policy<Booking> canBeConfirmed = Policies.allOf("booking-can-be-confirmed", List
 
         Policies.require("booking-must-be-active",
                 Booking::active,
-                "BOOKING_INACTIVE", "La reserva debe estar activa"),
+                "BOOKING_INACTIVE", "The booking must be active"),
 
         Policies.require("customer-must-be-adult",
                 booking -> booking.age() >= 18,
-                "CUSTOMER_UNDERAGE", "El cliente debe ser mayor de edad"),
+                "CUSTOMER_UNDERAGE", "The customer must be of age"),
 
         Policies.require("weekly-limit",
                 booking -> booking.weeklyBookings() < 3,
                 booking -> new PolicyViolation(
                         "WEEKLY_LIMIT_REACHED",
-                        "Límite semanal alcanzado",
+                        "Weekly booking limit reached",
                         Map.of("current", booking.weeklyBookings(), "maximum", 3)))
 ));
 
@@ -120,47 +121,47 @@ PolicyResult result = canBeConfirmed.evaluate(booking);
 if (result.allowed()) {
     bookings.confirm(booking);
 } else {
-    return unprocessableEntity(result.violations());   // todos los motivos
+    return unprocessableEntity(result.violations());   // every reason
 }
 ```
 
-Y en el borde de la aplicación, cuando la operación no puede continuar:
+And at the boundary of the application, where the operation cannot continue:
 
 ```java
-canBeConfirmed.enforce(booking);   // lanza PolicyViolationException si deniega
+canBeConfirmed.enforce(booking);   // throws PolicyViolationException when denied
 ```
 
 ---
 
-## Los cuatro conceptos
+## The four concepts
 
-| Tipo              | Responde a                 | Contiene                                |
-|-------------------|----------------------------|-----------------------------------------|
-| `Rule<T>`         | *¿se cumple la condición?* | un `boolean`, nada más                  |
-| `Policy<T>`       | *¿puede ocurrir esto?*     | una condición + el motivo de denegarla  |
-| `PolicyResult`    | *¿qué ha pasado?*          | la lista de motivos (vacía = permitido) |
-| `PolicyViolation` | *¿por qué no?*             | código estable, mensaje y metadatos     |
+| Type | Answers | Holds |
+|------|---------|-------|
+| `Rule<T>` | *does the condition hold?* | a `boolean`, nothing else |
+| `Policy<T>` | *may this happen?* | a condition plus the reason for denying it |
+| `PolicyResult` | *what happened?* | the list of reasons (empty means allowed) |
+| `PolicyViolation` | *why not?* | a stable code, a message and metadata |
 
-Dos decisiones de diseño que conviene entender antes de usarla:
+Two design decisions worth understanding before using it:
 
-**Una denegación es un valor, no una excepción.** Denegar es un resultado
-esperado del negocio, así que `evaluate` devuelve un `PolicyResult` con *todos*
-los motivos. Solo el borde de la aplicación lo convierte en excepción, con
-`enforce` o `requireAllowed`.
+**A denial is a value, not an exception.** Denying is an expected business
+outcome, so `evaluate` returns a `PolicyResult` carrying *every* reason. Only the
+boundary of the application turns it into an exception, through `enforce` or
+`requireAllowed`.
 
-**El estado se deriva, no se guarda.** `PolicyResult.allowed()` es
-`violations().isEmpty()`. Así es imposible construir los estados contradictorios
-"denegado sin motivo" o "permitido con violaciones".
+**State is derived, not stored.** `PolicyResult.allowed()` is
+`violations().isEmpty()`, which makes the contradictory states "denied without a
+reason" and "allowed with violations" impossible to build.
 
-Detalle completo en [docs/politicas.md](docs/politicas.md).
+Full detail in [docs/policies.md](docs/policies.md).
 
 ---
 
-## Reglas configurables
+## Configurable rules
 
-Cuando un umbral cambia más a menudo que el software, la condición puede vivir
-fuera del código. La aplicación declara **qué tipos de regla acepta** y la
-configuración solo puede combinarlos y parametrizarlos:
+When a threshold changes more often than the software, the condition can live
+outside the code. The application declares **which rule types it accepts**, and
+configuration can only combine and parameterize those:
 
 ```java
 RuleRegistry<Booking> registry = new RuleRegistry<Booking>()
@@ -176,7 +177,7 @@ RuleRegistry<Booking> registry = new RuleRegistry<Booking>()
 RuleCompiler<Booking> compiler = new RuleCompiler<>(registry);
 ```
 
-El documento almacenado —lo cargue quien lo cargue— tiene esta forma:
+The stored document — loaded by whoever loads it — has this shape:
 
 ```json
 {
@@ -188,7 +189,7 @@ El documento almacenado —lo cargue quien lo cargue— tiene esta forma:
 }
 ```
 
-Y se compila en una regla normal y corriente:
+And it compiles into an ordinary rule:
 
 ```java
 Map<String, Object> document = ruleStore.load("booking-eligibility");
@@ -197,112 +198,115 @@ Rule<Booking> eligible = compiler.compile(RuleDefinitionCodec.read(document));
 
 Policy<Booking> eligibility = Policies.require(
         "booking-eligibility", eligible,
-        "NOT_ELIGIBLE", "La reserva no cumple la regla de elegibilidad");
+        "NOT_ELIGIBLE", "The booking does not meet the eligibility rule");
 ```
 
-La regla compilada es indistinguible de una escrita a mano: se compone con
-`and`/`or`/`not` y la usa cualquier política.
+A compiled rule is indistinguishable from a hand-written one: it composes with
+`and`/`or`/`not` and any policy can use it.
 
-Tres garantías que hacen esto seguro:
+Three guarantees make this safe:
 
-- **La configuración no introduce comportamiento.** Solo puede usar los tipos
-  registrados; cualquier otro se rechaza con `UnknownRuleTypeException`.
-- **Los errores salen al compilar, no al decidir.** Un parámetro que falta o un
-  tipo desconocido fallan en `compile(...)`. Una regla ya compilada no puede
-  fallar por configuración.
-- **La librería no sabe de dónde viene el documento.** Mongo, PostgreSQL, un
-  fichero JSON o un servicio remoto: todos entregan un `Map<String, Object>`.
+- **Configuration introduces no behavior.** It can only use the registered types;
+  anything else is rejected with `UnknownRuleTypeException`.
+- **Errors surface at compile time, not at decision time.** A missing parameter or
+  an unknown type fails in `compile(...)`. A compiled rule can no longer fail
+  because of configuration.
+- **The library does not know where the document came from.** MongoDB,
+  PostgreSQL, a JSON file or a remote service: all of them hand over a
+  `Map<String, Object>`.
 
-Guía completa en [docs/reglas-dinamicas.md](docs/reglas-dinamicas.md) y
-especificación del formato en [docs/formato-de-reglas.md](docs/formato-de-reglas.md).
+Full guide in [docs/dynamic-rules.md](docs/dynamic-rules.md), format spec in
+[docs/rule-definition-format.md](docs/rule-definition-format.md).
 
 ---
 
-## Mapa de la API
+## API map
 
 ```
-io.github.sebas2409.policyrules.policy              Decisiones de negocio
+io.github.sebas2409.policyrules.policy            Business decisions
     Policy<T>                       id() + evaluate(ctx) + enforce(ctx)
     Policies                        require, forbid, allOf, firstFailureOf, adapt, allow, deny
     PolicyResult                    allowed/denied, violations, codes, combine, requireAllowed
     PolicyViolation                 code + message + metadata
-    PolicyViolationException        lo que lanza el borde de la aplicación
+    PolicyViolationException        what the application boundary throws
 
-io.github.sebas2409.policyrules.rule                Condiciones
+io.github.sebas2409.policyrules.rule              Conditions
     Rule<T>                         matches + and/or/not + adapt + asPredicate
     Rules                           alwaysTrue, alwaysFalse, of, not, allOf, anyOf
 
-io.github.sebas2409.policyrules.rule.definition     Reglas desde configuración
-    RuleDefinition                  modelo sellado: atómica, and, or, not
-    RuleDefinitions                 factorías + typesOf/sizeOf para validar
+io.github.sebas2409.policyrules.rule.definition   Rules from configuration
+    RuleDefinition                  sealed model: atomic, and, or, not
+    RuleDefinitions                 factories plus typesOf/sizeOf for validation
     RuleDefinitionCodec             Map <-> RuleDefinition
-    RuleRegistry<T>                 catálogo de tipos aceptados
-    RuleFactory<T>                  construye una regla desde sus parámetros
-    RuleParameters                  lectura tipada de parámetros
+    RuleRegistry<T>                 catalog of accepted types
+    RuleFactory<T>                  builds a rule from its parameters
+    RuleParameters                  type-safe parameter reading
     RuleConfigurationException      + UnknownRuleType / RuleParameter / RuleDefinitionFormat
 ```
 
 ---
 
-## Qué no incluye y por qué
+## What it leaves out, and why
 
-La librería no trae **observabilidad**, **persistencia** ni **caché**. No es una
-carencia: son justo las tres cosas que cada proyecto ya tiene resueltas a su
-manera, y meterlas aquí obligaría a acatar la decisión de la librería.
+The library ships no **observability**, **persistence** or **caching**. That is
+not an omission: those are precisely the three things every project already
+solves its own way, and bundling them here would force the library's choice on
+everyone.
 
-Como `Policy` y `Rule` son interfaces pequeñas, añadirlas en tu proyecto es un
-decorador de pocas líneas. En [docs/integracion.md](docs/integracion.md) están
-los patrones listos para copiar:
+Since `Policy` and `Rule` are small interfaces, adding them in your project is a
+decorator of a few lines. [docs/integration.md](docs/integration.md) has the
+ready-to-copy patterns:
 
-- decorar una política con métricas, logs o trazas,
-- cachear reglas compiladas e invalidarlas al cambiar la configuración,
-- cargar definiciones desde MongoDB, JPA o un fichero JSON,
-- registrar las políticas como beans de Spring,
-- validar la configuración almacenada antes de que llegue a producción.
-
----
-
-## Documentación
-
-| Documento                                              | Contenido                                              |
-|--------------------------------------------------------|--------------------------------------------------------|
-| [docs/primeros-pasos.md](docs/primeros-pasos.md)       | De cero a una política compuesta, paso a paso          |
-| [docs/politicas.md](docs/politicas.md)                 | Políticas, resultados, violaciones y composición       |
-| [docs/reglas-dinamicas.md](docs/reglas-dinamicas.md)   | Registro, factorías, parámetros y compilación          |
-| [docs/formato-de-reglas.md](docs/formato-de-reglas.md) | Especificación del documento de configuración          |
-| [docs/integracion.md](docs/integracion.md)             | Observabilidad, persistencia, caché, Spring y tests    |
-| [docs/diseno.md](docs/diseno.md)                       | Decisiones de diseño y sus alternativas descartadas    |
-| [docs/publicacion.md](docs/publicacion.md)             | Flujo de release, workflows y cómo consumir el paquete |
-
-El JavaDoc es la referencia detallada de cada tipo; se genera con
-`mvn -Prelease javadoc:javadoc` y queda en `target/site/apidocs`.
+- decorating a policy with metrics, logs or traces,
+- caching compiled rules and invalidating them when configuration changes,
+- loading definitions from MongoDB, JPA or a JSON file,
+- registering policies as Spring beans,
+- validating stored configuration before it reaches production.
 
 ---
 
-## Compilar y publicar
+## Documentation
+
+| Document | Content |
+|----------|---------|
+| [docs/getting-started.md](docs/getting-started.md) | From nothing to a composed policy, step by step |
+| [docs/policies.md](docs/policies.md) | Policies, results, violations and composition |
+| [docs/dynamic-rules.md](docs/dynamic-rules.md) | Registry, factories, parameters and compilation |
+| [docs/rule-definition-format.md](docs/rule-definition-format.md) | Specification of the configuration document |
+| [docs/integration.md](docs/integration.md) | Observability, persistence, caching, Spring and tests |
+| [docs/design.md](docs/design.md) | Design decisions and the alternatives that were discarded |
+| [docs/publishing.md](docs/publishing.md) | Release flow, workflows and how to consume the artifact |
+
+The Javadoc is the detailed per-type reference; it is generated with
+`mvn -Prelease javadoc:javadoc` into `target/site/apidocs`.
+
+---
+
+## Build and publish
 
 ```bash
-mvn verify                 # compila y ejecuta los tests
-mvn -Prelease install      # además genera los jar de fuentes y JavaDoc
+mvn verify                 # compiles and runs the tests
+mvn -Prelease install      # also builds the sources and Javadoc jars
 ```
 
-El perfil `release` adjunta `-sources.jar` y `-javadoc.jar`. El JavaDoc se genera
-con `doclint` estricto: cualquier documentación incompleta rompe la build.
+The `release` profile attaches `-sources.jar` and `-javadoc.jar`. Javadoc is
+generated with strict `doclint`: incomplete documentation breaks the build.
 
-La publicación es automática y **la versión del `pom.xml` manda**: al mergear a
-`main` un cambio de `<version>`, el workflow `Release` firma y publica el
-artefacto en Maven Central, crea el tag `vX.Y.Z` y abre la release con los jar
-adjuntos. Una versión `-SNAPSHOT`, o una cuyo tag ya existe, no publica nada.
+Publishing is automatic and **the version in `pom.xml` drives it**: merging a
+`<version>` change into `main` makes the `Release` workflow sign and publish the
+artifact to Maven Central, create the `vX.Y.Z` tag and open the release with the
+jars attached. A `-SNAPSHOT` version, or one whose tag already exists, publishes
+nothing.
 
 ```bash
-# subir <version> en pom.xml (ej. 1.1.0) y:
-git commit -am "Versión 1.1.0" && git push origin main
+# bump <version> in pom.xml (e.g. 1.1.0) and:
+git commit -am "Version 1.1.0" && git push origin main
 ```
 
-Detalle completo en [docs/publicacion.md](docs/publicacion.md).
+Full detail in [docs/publishing.md](docs/publishing.md).
 
 ---
 
-## Licencia
+## License
 
-MIT. Ver [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

@@ -1,17 +1,17 @@
 name: Release
 
-# Publica el paquete en Maven Central y crea el tag a partir de la versión
-# del pom.
+# Publishes the artifact to Maven Central and creates the tag from the version
+# in the pom.
 #
-# Flujo: se cambia <version> en pom.xml y se mergea a main. Este workflow lee
-# esa versión, publica el artefacto firmado en Central, crea el tag vX.Y.Z y
-# abre la release con los jar adjuntos.
+# Flow: change <version> in pom.xml and merge it into main. This workflow reads
+# that version, publishes the signed artifact to Central, creates the vX.Y.Z tag
+# and opens the release with the jars attached.
 #
-# Una versión -SNAPSHOT, o una cuyo tag ya existe, no publica nada.
+# A -SNAPSHOT version, or one whose tag already exists, publishes nothing.
 #
-# Requiere cuatro secretos (ver docs/publicacion.md):
-#   CENTRAL_USERNAME, CENTRAL_TOKEN  credenciales del Central Portal
-#   GPG_PRIVATE_KEY, GPG_PASSPHRASE  clave con la que se firman los artefactos
+# Requires four secrets (see docs/publishing.md):
+#   CENTRAL_USERNAME, CENTRAL_TOKEN  Central Portal credentials
+#   GPG_PRIVATE_KEY, GPG_PASSPHRASE  key the artifacts are signed with
 on:
   push:
     branches: [ main ]
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # crear el tag y la release
+  contents: write   # create the tag and the release
 
 concurrency:
   group: release
@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   release:
-    name: Publicar y etiquetar
+    name: Publish and tag
     runs-on: ubuntu-latest
 
     env:
@@ -37,15 +37,15 @@ jobs:
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
 
     steps:
-      - name: Descargar el repositorio con su historial y sus tags
+      - name: Check out the repository with its history and tags
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Sin credenciales no se puede firmar ni subir, así que se comprueba
-      # antes de preparar nada. Se hace aquí y no en el paso de publicación
-      # para no llegar a importar una clave GPG vacía.
-      - name: Comprobar las credenciales de Maven Central
+      # Without credentials nothing can be signed or uploaded, so this is
+      # checked before anything is set up. It happens here rather than in the
+      # publish step to avoid importing an empty GPG key.
+      - name: Check the Maven Central credentials
         id: secrets
         run: |
           missing=""
@@ -56,7 +56,7 @@ jobs:
           done
 
           if [ -n "$missing" ]; then
-            reason="Faltan secretos:$missing. Configúralos siguiendo docs/publicacion.md."
+            reason="Missing secrets:$missing. Set them up following docs/publishing.md."
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "::error::$reason"
               exit 1
@@ -68,7 +68,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Preparar Java 25, la clave GPG y las credenciales de Central
+      - name: Set up Java 25, the GPG key and the Central credentials
         if: steps.secrets.outputs.ready == 'true'
         uses: actions/setup-java@v4
         with:
@@ -81,16 +81,16 @@ jobs:
           gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
           gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
-      - name: Leer la versión del pom
+      - name: Read the version from the pom
         id: pom
         if: steps.secrets.outputs.ready == 'true'
         run: |
           version="$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "Versión del pom: \`$version\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version in the pom: \`$version\`" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Decidir si la versión es publicable
+      - name: Decide whether the version is publishable
         id: gate
         if: steps.secrets.outputs.ready == 'true'
         env:
@@ -99,13 +99,13 @@ jobs:
         run: |
           reason=""
           if [ "${VERSION%-SNAPSHOT}" != "$VERSION" ]; then
-            reason="La versión $VERSION es un SNAPSHOT: sube la versión del pom para publicar."
+            reason="Version $VERSION is a SNAPSHOT: bump the version in the pom to publish."
           elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            reason="El tag $TAG ya existe: la versión $VERSION ya está publicada."
+            reason="Tag $TAG already exists: version $VERSION is already published."
           fi
 
           if [ -n "$reason" ]; then
-            # Lanzado a mano se espera una publicación, así que es un fallo.
+            # A manual run expects a publication, so this is a failure.
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
               echo "::error::$reason"
               exit 1
@@ -117,11 +117,11 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Compila, pasa los tests, genera fuentes y JavaDoc, firma todo con GPG
-      # y lo sube a Central. Con autoPublish el artefacto queda publicado sin
-      # pasar por el portal, y el paso espera al resultado: si Central lo
-      # rechaza, no se crea el tag.
-      - name: Publicar en Maven Central
+      # Compiles, runs the tests, builds sources and Javadoc, signs everything
+      # with GPG and uploads it to Central. With autoPublish the artifact is
+      # published without visiting the portal, and this step waits for the
+      # outcome: if Central rejects it, no tag is created.
+      - name: Publish to Maven Central
         if: steps.gate.outputs.publish == 'true'
         env:
           MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
@@ -129,7 +129,7 @@ jobs:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: mvn -B -Prelease,central deploy
 
-      - name: Crear el tag de la versión
+      - name: Create the version tag
         if: steps.gate.outputs.publish == 'true'
         env:
           VERSION: ${{ steps.pom.outputs.version }}
@@ -140,7 +140,7 @@ jobs:
           git tag -a "$TAG" -m "policy-rules $VERSION"
           git push origin "$TAG"
 
-      - name: Publicar la release con los jar adjuntos
+      - name: Publish the release with the jars attached
         if: steps.gate.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -153,4 +153,4 @@ jobs:
             target/policy-rules-"$VERSION".jar \
             target/policy-rules-"$VERSION"-sources.jar \
             target/policy-rules-"$VERSION"-javadoc.jar
-          echo "Publicada la release [$TAG](${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published release [$TAG](${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
