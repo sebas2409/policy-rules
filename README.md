@@ -1,6 +1,9 @@
 # policy-rules
 
 [![CI](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/sebas2409/policy-rules?label=release)](https://github.com/sebas2409/policy-rules/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Java](https://img.shields.io/badge/Java-25-orange)
 
 Librería Java para expresar **reglas de negocio** y **políticas** como objetos
 componibles, incluyendo reglas cuya forma se decide **en configuración** y no en
