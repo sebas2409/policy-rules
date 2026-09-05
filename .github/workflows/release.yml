@@ -1,0 +1,115 @@
+name: Release
+
+# Publica el paquete y crea el tag a partir de la versión del pom.
+#
+# Flujo: se cambia <version> en pom.xml y se mergea a main. Este workflow lee
+# esa versión, publica el artefacto en GitHub Packages, crea el tag vX.Y.Z y
+# abre la release con los jar adjuntos.
+#
+# Una versión -SNAPSHOT, o una cuyo tag ya existe, no publica nada.
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'pom.xml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # crear el tag y la release
+  packages: write   # publicar en GitHub Packages
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publicar y etiquetar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el repositorio con su historial y sus tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar Java 25 y las credenciales de GitHub Packages
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+          server-id: github
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_TOKEN
+
+      - name: Leer la versión del pom
+        id: pom
+        run: |
+          version="$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "Versión del pom: \`$version\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Decidir si la versión es publicable
+        id: gate
+        env:
+          VERSION: ${{ steps.pom.outputs.version }}
+          TAG: ${{ steps.pom.outputs.tag }}
+        run: |
+          reason=""
+          if [ "${VERSION%-SNAPSHOT}" != "$VERSION" ]; then
+            reason="La versión $VERSION es un SNAPSHOT: sube la versión del pom para publicar."
+          elif git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            reason="El tag $TAG ya existe: la versión $VERSION ya está publicada."
+          fi
+
+          if [ -n "$reason" ]; then
+            # Lanzado a mano se espera una publicación, así que es un fallo.
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::$reason"
+              exit 1
+            fi
+            echo "::notice::$reason"
+            echo "$reason" >> "$GITHUB_STEP_SUMMARY"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Compila, ejecuta los tests, genera fuentes y JavaDoc, y sube todo.
+      # Si algo falla aquí no se crea el tag, así que un tag siempre
+      # corresponde a una versión efectivamente publicada.
+      - name: Publicar en GitHub Packages
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mvn -B -Prelease deploy \
+            -DaltDeploymentRepository="github::https://maven.pkg.github.com/${{ github.repository }}"
+
+      - name: Crear el tag de la versión
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.pom.outputs.version }}
+          TAG: ${{ steps.pom.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "policy-rules $VERSION"
+          git push origin "$TAG"
+
+      - name: Publicar la release con los jar adjuntos
+        if: steps.gate.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.pom.outputs.version }}
+          TAG: ${{ steps.pom.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            --title "policy-rules $VERSION" \
+            --generate-notes \
+            target/policy-rules-"$VERSION".jar \
+            target/policy-rules-"$VERSION"-sources.jar \
+            target/policy-rules-"$VERSION"-javadoc.jar
+          echo "Publicada la release [$TAG](${{ github.server_url }}/${{ github.repository }}/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"

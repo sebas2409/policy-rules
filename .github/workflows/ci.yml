@@ -1,0 +1,32 @@
+name: CI
+
+# Verifica cada cambio antes de que llegue a main. No publica nada.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compilar, tests y JavaDoc
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Java 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      # El perfil release genera además los jar de fuentes y JavaDoc, así que
+      # una documentación incompleta rompe la build aquí y no al publicar.
+      - name: Verificar
+        run: mvn -B -Prelease verify
