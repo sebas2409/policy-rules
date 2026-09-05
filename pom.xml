@@ -170,7 +170,12 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.7.0</version>
+                        <!--
+                            0.7.0 subía bien pero reventaba al leer la respuesta
+                            del portal, que ya devuelve un campo "warnings" que
+                            esa versión no conoce.
+                        -->
+                        <version>0.11.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
