@@ -1,7 +1,7 @@
 # policy-rules
 
 [![CI](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/sebas2409/policy-rules?label=release)](https://github.com/sebas2409/policy-rules/releases/latest)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.sebas2409/policy-rules)](https://central.sonatype.com/artifact/io.github.sebas2409/policy-rules)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Java](https://img.shields.io/badge/Java-25-orange)
 
@@ -66,52 +66,32 @@ Esto tiene tres problemas concretos:
 
 ## Instalación
 
-La librería se publica en **GitHub Packages** desde el workflow de release.
-Maven:
+Publicada en **Maven Central**: no hace falta ningún token ni repositorio extra.
 
 ```xml
-<repositories>
-    <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/sebas2409/policy-rules</url>
-    </repository>
-</repositories>
-
-<dependencies>
-    <dependency>
-        <groupId>com.policyrules</groupId>
-        <artifactId>policy-rules</artifactId>
-        <version>1.0.0</version>
-    </dependency>
-</dependencies>
+<dependency>
+    <groupId>io.github.sebas2409</groupId>
+    <artifactId>policy-rules</artifactId>
+    <version>1.0.0</version>
+</dependency>
 ```
 
 Gradle:
 
 ```kotlin
-repositories {
-    maven { url = uri("https://maven.pkg.github.com/sebas2409/policy-rules") }
-}
-
-dependencies {
-    implementation("com.policyrules:policy-rules:1.0.0")
-}
+implementation("io.github.sebas2409:policy-rules:1.0.0")
 ```
 
-GitHub Packages pide autenticación incluso para leer: hace falta un token con
-`read:packages` en el `settings.xml` del consumidor. Los detalles, y las
-alternativas de consumo anónimo (Maven Central y JitPack), están en
-[docs/publicacion.md](docs/publicacion.md).
-
 Requiere **Java 25**. La librería publica el nombre de módulo automático
-`com.policyrules`, así que funciona tanto en el classpath como en el module path.
+`io.github.sebas2409.policyrules`, así que funciona tanto en el classpath como
+en el module path.
 
 ---
 
 ## Ejemplo en un minuto
 
 ```java
-import com.policyrules.policy.*;
+import io.github.sebas2409.policyrules.policy.*;
 import java.util.List;
 import java.util.Map;
 
@@ -241,18 +221,18 @@ especificación del formato en [docs/formato-de-reglas.md](docs/formato-de-regla
 ## Mapa de la API
 
 ```
-com.policyrules.policy              Decisiones de negocio
+io.github.sebas2409.policyrules.policy              Decisiones de negocio
     Policy<T>                       id() + evaluate(ctx) + enforce(ctx)
     Policies                        require, forbid, allOf, firstFailureOf, adapt, allow, deny
     PolicyResult                    allowed/denied, violations, codes, combine, requireAllowed
     PolicyViolation                 code + message + metadata
     PolicyViolationException        lo que lanza el borde de la aplicación
 
-com.policyrules.rule                Condiciones
+io.github.sebas2409.policyrules.rule                Condiciones
     Rule<T>                         matches + and/or/not + adapt + asPredicate
     Rules                           alwaysTrue, alwaysFalse, of, not, allOf, anyOf
 
-com.policyrules.rule.definition     Reglas desde configuración
+io.github.sebas2409.policyrules.rule.definition     Reglas desde configuración
     RuleDefinition                  modelo sellado: atómica, and, or, not
     RuleDefinitions                 factorías + typesOf/sizeOf para validar
     RuleDefinitionCodec             Map <-> RuleDefinition
@@ -310,9 +290,9 @@ El perfil `release` adjunta `-sources.jar` y `-javadoc.jar`. El JavaDoc se gener
 con `doclint` estricto: cualquier documentación incompleta rompe la build.
 
 La publicación es automática y **la versión del `pom.xml` manda**: al mergear a
-`main` un cambio de `<version>`, el workflow `Release` publica el paquete, crea
-el tag `vX.Y.Z` y abre la release con los jar adjuntos. Una versión `-SNAPSHOT`,
-o una cuyo tag ya existe, no publica nada.
+`main` un cambio de `<version>`, el workflow `Release` firma y publica el
+artefacto en Maven Central, crea el tag `vX.Y.Z` y abre la release con los jar
+adjuntos. Una versión `-SNAPSHOT`, o una cuyo tag ya existe, no publica nada.
 
 ```bash
 # subir <version> en pom.xml (ej. 1.1.0) y:

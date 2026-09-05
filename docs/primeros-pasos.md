@@ -32,8 +32,8 @@ dispara consultas sorpresa.
 regla se cumple:
 
 ```java
-import com.policyrules.policy.Policies;
-import com.policyrules.policy.Policy;
+import io.github.sebas2409.policyrules.policy.Policies;
+import io.github.sebas2409.policyrules.policy.Policy;
 
 Policy<Booking> mustBeActive = Policies.require(
         "booking-must-be-active",       // identificador estable

@@ -1,6 +1,6 @@
 # Políticas y resultados
 
-Referencia del paquete `com.policyrules.policy`: qué modela cada tipo, qué
+Referencia del paquete `io.github.sebas2409.policyrules.policy`: qué modela cada tipo, qué
 garantiza y cuándo usar cada factoría.
 
 ## Regla y política: la diferencia

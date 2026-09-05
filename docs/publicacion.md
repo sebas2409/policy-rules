@@ -1,13 +1,68 @@
 # Publicación
 
-Cómo se publica la librería y cómo se consume desde otro proyecto.
+La librería se publica en **Maven Central**, que es el único registro con
+consumo anónimo: quien la use no necesita token ni declarar repositorios.
 
+- [Puesta en marcha](#puesta-en-marcha) — solo la primera vez
 - [El flujo de release](#el-flujo-de-release)
 - [Qué hace cada workflow](#qué-hace-cada-workflow)
-- [Consumir desde GitHub Packages](#consumir-desde-github-packages)
-- [Publicar en Maven Central](#publicar-en-maven-central)
-- [JitPack, la alternativa sin token](#jitpack-la-alternativa-sin-token)
+- [Consumir la librería](#consumir-la-librería)
 - [Problemas frecuentes](#problemas-frecuentes)
+
+---
+
+## Puesta en marcha
+
+Cuatro pasos manuales, una sola vez. Hasta completarlos el workflow `Release`
+avisa y no publica nada.
+
+### 1. Verificar el namespace `io.github.sebas2409`
+
+1. Entra en <https://central.sonatype.com> con la cuenta de GitHub.
+2. *Publish → Namespaces → Add Namespace* → `io.github.sebas2409`.
+3. El portal da un código tipo `abc123xyz`. Crea un repositorio público vacío
+   con ese nombre exacto en tu cuenta y pulsa *Verify Namespace*.
+4. Cuando quede en **verified**, borra ese repositorio: ya no hace falta.
+
+El namespace `io.github.<usuario>` se verifica así, sin dominio propio. Es la
+razón por la que el `groupId` es `io.github.sebas2409` y no `com.policyrules`.
+
+### 2. Generar el token del portal
+
+En *Account → Generate User Token*. Devuelve un usuario y una contraseña que no
+son los de tu cuenta: son las credenciales que usa Maven.
+
+### 3. Crear la clave GPG
+
+Central exige que cada artefacto vaya firmado.
+
+```bash
+# Crear la clave (elige RSA 4096 y una passphrase que puedas guardar)
+gpg --full-generate-key
+
+# Anotar el id largo de la clave
+gpg --list-secret-keys --keyid-format=long
+
+# Publicarla, o Central no podrá verificar la firma
+gpg --keyserver keyserver.ubuntu.com --send-keys TU_KEY_ID
+
+# Exportarla para el workflow (bloque completo, con las líneas BEGIN/END)
+gpg --armor --export-secret-keys TU_KEY_ID
+```
+
+Guarda la clave privada y la passphrase en un gestor de contraseñas: perderlas
+obliga a repetir el proceso.
+
+### 4. Registrar los cuatro secretos en GitHub
+
+En *Settings → Secrets and variables → Actions → New repository secret*:
+
+| Secreto | Contenido |
+|---------|-----------|
+| `CENTRAL_USERNAME` | usuario del token del portal (paso 2) |
+| `CENTRAL_TOKEN` | contraseña de ese token |
+| `GPG_PRIVATE_KEY` | la salida completa de `gpg --armor --export-secret-keys` |
+| `GPG_PASSPHRASE` | la passphrase de la clave |
 
 ---
 
@@ -29,25 +84,35 @@ A partir de ahí, el workflow `Release` hace solo:
 ```
 pom.xml (1.1.0)
    ├─ compila, pasa los tests y genera fuentes + JavaDoc
-   ├─ publica com.policyrules:policy-rules:1.1.0 en GitHub Packages
+   ├─ firma los cinco artefactos con GPG
+   ├─ publica io.github.sebas2409:policy-rules:1.1.0 en Maven Central
    ├─ crea el tag v1.1.0
-   └─ abre la release v1.1.0 con los tres jar adjuntos
+   └─ abre la release en GitHub con los tres jar adjuntos
 ```
 
 Reglas del portero, para que nada se publique dos veces ni por error:
 
-| Versión del pom | Resultado |
-|-----------------|-----------|
-| `1.1.0`, sin tag `v1.1.0` | se publica |
-| `1.1.0`, con tag `v1.1.0` ya existente | no hace nada (esa versión ya salió) |
-| `1.1.0-SNAPSHOT` | no hace nada (los snapshots no se publican) |
+| Situación | Resultado |
+|-----------|-----------|
+| falta alguno de los cuatro secretos | avisa y no publica |
+| versión `1.1.0-SNAPSHOT` | no hace nada (los snapshots no se publican) |
+| versión `1.1.0` con el tag `v1.1.0` ya existente | no hace nada |
+| versión `1.1.0` sin tag | se publica |
 
-Si se lanza a mano (`Actions → Release → Run workflow`) y la versión no es
-publicable, el workflow **falla** en vez de terminar en silencio: si lo has
-lanzado tú, esperabas una publicación.
+Si se lanza a mano (*Actions → Release → Run workflow*) y algo de eso falla, el
+workflow **falla** en vez de terminar en silencio: si lo has lanzado tú,
+esperabas una publicación.
 
-El tag se crea **después** de publicar el artefacto, así que un tag siempre
-corresponde a una versión que existe de verdad en el registro.
+El tag se crea **después** de que Central acepte el artefacto, así que un tag
+siempre corresponde a una versión que existe de verdad en el registro. Con
+`autoPublish` no hay que pulsar nada en el portal.
+
+Una versión publicada en Central es **inmutable**: no se puede borrar ni
+sobrescribir. Para corregir algo se publica una versión nueva.
+
+La primera vez, el artefacto tarda unos minutos en aparecer en
+[central.sonatype.com](https://central.sonatype.com/artifact/io.github.sebas2409/policy-rules)
+y hasta unas horas en el índice de búsqueda.
 
 ---
 
@@ -56,223 +121,76 @@ corresponde a una versión que existe de verdad en el registro.
 ### `.github/workflows/ci.yml`
 
 Se ejecuta en cada push a `main` y en cada pull request. Ejecuta
-`mvn -Prelease verify`, es decir: compila, pasa los tests y **genera el JavaDoc
-con `doclint` estricto**. Así una documentación incompleta rompe el PR y no la
-publicación.
+`mvn -Prelease verify`: compila, pasa los tests y **genera el JavaDoc con
+`doclint` estricto**. Así una documentación incompleta rompe el PR y no la
+publicación. No firma ni necesita secretos.
 
 ### `.github/workflows/release.yml`
 
-Se ejecuta cuando cambia `pom.xml` en `main`, o a mano. Necesita estos permisos,
-que ya están declarados en el propio workflow:
+Se ejecuta cuando cambia `pom.xml` en `main`, o a mano. Necesita
+`contents: write` para crear el tag y la release, y los cuatro secretos de
+arriba. Publica con `mvn -Prelease,central deploy`.
 
-- `contents: write` para crear el tag y la release,
-- `packages: write` para publicar el artefacto.
+### Los perfiles del `pom.xml`
 
-No hace falta configurar ningún secreto: usa el `GITHUB_TOKEN` que Actions
-inyecta solo. La URL del registro se construye con `${{ github.repository }}`, de
-modo que el workflow funciona igual en un fork o si renombras el repositorio.
+| Perfil | Qué añade | Quién lo usa |
+|--------|-----------|--------------|
+| `release` | jar de fuentes y de JavaDoc | CI, el release y tú en local |
+| `central` | firma GPG y `central-publishing-maven-plugin` | solo el release |
 
----
-
-## Consumir desde GitHub Packages
-
-En el proyecto que use la librería:
-
-```xml
-<repositories>
-    <repository>
-        <id>github</id>
-        <url>https://maven.pkg.github.com/sebas2409/policy-rules</url>
-    </repository>
-</repositories>
-
-<dependencies>
-    <dependency>
-        <groupId>com.policyrules</groupId>
-        <artifactId>policy-rules</artifactId>
-        <version>1.0.0</version>
-    </dependency>
-</dependencies>
-```
-
-> **GitHub Packages exige autenticación incluso para leer.** Es su única
-> limitación relevante: aunque el repositorio sea público, quien consuma el
-> paquete necesita un token. Si necesitas consumo anónimo, ve a
-> [Maven Central](#publicar-en-maven-central) o a [JitPack](#jitpack-la-alternativa-sin-token).
-
-En `~/.m2/settings.xml` del consumidor, con un token clásico que tenga el permiso
-`read:packages`:
-
-```xml
-<settings>
-    <servers>
-        <server>
-            <id>github</id>
-            <username>TU_USUARIO</username>
-            <password>${env.GITHUB_TOKEN}</password>
-        </server>
-    </servers>
-</settings>
-```
-
-En Gradle:
-
-```kotlin
-repositories {
-    mavenCentral()
-    maven {
-        url = uri("https://maven.pkg.github.com/sebas2409/policy-rules")
-        credentials {
-            username = System.getenv("GITHUB_ACTOR")
-            password = System.getenv("GITHUB_TOKEN")
-        }
-    }
-}
-
-dependencies {
-    implementation("com.policyrules:policy-rules:1.0.0")
-}
-```
-
-Y si el consumidor es otro workflow de Actions, no hace falta ningún secreto
-extra: `secrets.GITHUB_TOKEN` ya sirve para leer paquetes de la misma
-organización.
+Están separados a propósito: así `mvn -Prelease verify` sigue funcionando en
+local sin tener una clave GPG configurada.
 
 ---
 
-## Publicar en Maven Central
+## Consumir la librería
 
-Es el único registro con consumo realmente anónimo. Requiere tres cosas que
-GitHub Packages no pide:
-
-**1. Un `groupId` verificado.** `com.policyrules` obliga a demostrar que
-controlas el dominio `policyrules.com`. Si no lo tienes, el camino habitual es
-cambiar el `groupId` a `io.github.TU_USUARIO`, que se verifica creando un
-repositorio con un nombre que te indica el portal. Eso implica renombrar también
-el paquete base, o dejar el paquete Java como está y cambiar solo las coordenadas
-Maven (es legal, aunque desaconsejado por convención).
-
-**2. Firma GPG de los artefactos.** Se añade al perfil `release`:
+Sin token, sin repositorios extra:
 
 ```xml
-<plugin>
-    <groupId>org.apache.maven.plugins</groupId>
-    <artifactId>maven-gpg-plugin</artifactId>
-    <version>3.2.7</version>
-    <executions>
-        <execution>
-            <id>sign-artifacts</id>
-            <phase>verify</phase>
-            <goals><goal>sign</goal></goals>
-        </execution>
-    </executions>
-</plugin>
-```
-
-**3. El plugin del Central Portal**, que sustituye al `deploy` de este workflow:
-
-```xml
-<plugin>
-    <groupId>org.sonatype.central</groupId>
-    <artifactId>central-publishing-maven-plugin</artifactId>
-    <version>0.7.0</version>
-    <extensions>true</extensions>
-    <configuration>
-        <publishingServerId>central</publishingServerId>
-    </configuration>
-</plugin>
-```
-
-En el workflow, el paso de publicación pasa a ser:
-
-```yaml
-      - name: Preparar Java 25, GPG y las credenciales de Central
-        uses: actions/setup-java@v4
-        with:
-          java-version: '25'
-          distribution: temurin
-          cache: maven
-          server-id: central
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_TOKEN
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase: MAVEN_GPG_PASSPHRASE
-
-      - name: Publicar en Maven Central
-        env:
-          MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          MAVEN_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        run: mvn -B -Prelease deploy
-```
-
-Secretos necesarios: `CENTRAL_USERNAME`, `CENTRAL_TOKEN` (los genera el portal de
-Sonatype), `GPG_PRIVATE_KEY` y `GPG_PASSPHRASE`. El resto del workflow —leer la
-versión, el portero, el tag y la release— no cambia.
-
-Recuerda además rellenar el `TODO` del `pom.xml` (`url`, `scm`) y añadir un
-bloque `<developers>`: Central los exige.
-
----
-
-## JitPack, la alternativa sin token
-
-JitPack compila el repositorio a partir del tag y sirve el artefacto sin
-autenticación. No hace falta publicar nada: basta con que exista el tag que ya
-crea este workflow.
-
-El consumidor añade:
-
-```xml
-<repository>
-    <id>jitpack.io</id>
-    <url>https://jitpack.io</url>
-</repository>
-
 <dependency>
-    <groupId>com.github.sebas2409</groupId>
+    <groupId>io.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
-    <version>v1.0.0</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
-Como los constructores de JitPack no traen Java 25 por defecto, hace falta un
-`jitpack.yml` en la raíz del repositorio:
-
-```yaml
-before_install:
-  - sdk install java 25-open
-  - sdk use java 25-open
+```kotlin
+implementation("io.github.sebas2409:policy-rules:1.0.0")
 ```
 
-Es la opción más barata para consumo público, a cambio de depender de un servicio
-de terceros y de que la primera descarga de cada versión tarde lo que tarde la
-compilación.
+El proyecto consumidor necesita **Java 25**.
 
 ---
 
 ## Problemas frecuentes
 
-**`409 Conflict` al publicar.** GitHub Packages no deja sobrescribir una versión
-ya publicada. Sube la versión del pom; el portero del workflow evita llegar aquí,
-salvo que se haya borrado el tag a mano.
+**`401 Unauthorized` al publicar.** Las credenciales son las del *user token*
+del portal, no el usuario y contraseña de la cuenta. Regenéralas en
+*Account → Generate User Token*.
+
+**`403` o "namespace not verified".** El namespace `io.github.sebas2409` no ha
+terminado de verificarse, o el `groupId` del pom no coincide exactamente con él.
+
+**"No public key" o falla la validación de la firma.** La clave GPG no está
+publicada en un keyserver. Repite `gpg --send-keys`; la propagación tarda unos
+minutos.
+
+**`gpg: signing failed: Inappropriate ioctl for device`.** Falta el
+`--pinentry-mode loopback` que el pom ya configura, o la passphrase no llega por
+`MAVEN_GPG_PASSPHRASE`.
 
 **El workflow no se dispara.** Solo escucha cambios en `pom.xml` dentro de
-`main`. Si has cambiado la versión en otra rama, todavía no ha pasado nada;
-mergea a `main` o lánzalo a mano.
-
-**`401 Unauthorized` al consumir.** Falta el `server` con `id` `github` en el
-`settings.xml` del consumidor, o el token no tiene `read:packages`. El `id` del
-`<repository>` y el del `<server>` tienen que coincidir.
+`main`. Si has cambiado la versión en otra rama, mergea a `main` o lánzalo a
+mano.
 
 **La build falla en el JavaDoc.** Es intencionado: el perfil `release` usa
 `doclint` estricto. Completa la documentación del elemento que señala el error.
 
-**Publicar desde local.** Es posible, aunque el flujo previsto es el workflow:
+**Publicar desde local.** Es posible, aunque el flujo previsto es el workflow.
+Necesitas el `server` `central` en tu `settings.xml` y la clave GPG en el
+llavero:
 
 ```bash
-mvn -B -Prelease deploy \
-    -DaltDeploymentRepository="github::https://maven.pkg.github.com/sebas2409/policy-rules"
+mvn -B -Prelease,central deploy
 ```
-
-con el `server` `github` configurado en tu `settings.xml`.

@@ -1,12 +1,17 @@
 name: Release
 
-# Publica el paquete y crea el tag a partir de la versión del pom.
+# Publica el paquete en Maven Central y crea el tag a partir de la versión
+# del pom.
 #
 # Flujo: se cambia <version> en pom.xml y se mergea a main. Este workflow lee
-# esa versión, publica el artefacto en GitHub Packages, crea el tag vX.Y.Z y
+# esa versión, publica el artefacto firmado en Central, crea el tag vX.Y.Z y
 # abre la release con los jar adjuntos.
 #
 # Una versión -SNAPSHOT, o una cuyo tag ya existe, no publica nada.
+#
+# Requiere cuatro secretos (ver docs/publicacion.md):
+#   CENTRAL_USERNAME, CENTRAL_TOKEN  credenciales del Central Portal
+#   GPG_PRIVATE_KEY, GPG_PASSPHRASE  clave con la que se firman los artefactos
 on:
   push:
     branches: [ main ]
@@ -15,7 +20,6 @@ on:
 
 permissions:
   contents: write   # crear el tag y la release
-  packages: write   # publicar en GitHub Packages
 
 concurrency:
   group: release
@@ -26,24 +30,60 @@ jobs:
     name: Publicar y etiquetar
     runs-on: ubuntu-latest
 
+    env:
+      CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+      CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
     steps:
       - name: Descargar el repositorio con su historial y sus tags
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Preparar Java 25 y las credenciales de GitHub Packages
+      # Sin credenciales no se puede firmar ni subir, así que se comprueba
+      # antes de preparar nada. Se hace aquí y no en el paso de publicación
+      # para no llegar a importar una clave GPG vacía.
+      - name: Comprobar las credenciales de Maven Central
+        id: secrets
+        run: |
+          missing=""
+          for name in CENTRAL_USERNAME CENTRAL_TOKEN GPG_PRIVATE_KEY GPG_PASSPHRASE; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            reason="Faltan secretos:$missing. Configúralos siguiendo docs/publicacion.md."
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::$reason"
+              exit 1
+            fi
+            echo "::warning::$reason"
+            echo "$reason" >> "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar Java 25, la clave GPG y las credenciales de Central
+        if: steps.secrets.outputs.ready == 'true'
         uses: actions/setup-java@v4
         with:
           java-version: '25'
           distribution: temurin
           cache: maven
-          server-id: github
+          server-id: central
           server-username: MAVEN_USERNAME
           server-password: MAVEN_TOKEN
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
 
       - name: Leer la versión del pom
         id: pom
+        if: steps.secrets.outputs.ready == 'true'
         run: |
           version="$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -52,6 +92,7 @@ jobs:
 
       - name: Decidir si la versión es publicable
         id: gate
+        if: steps.secrets.outputs.ready == 'true'
         env:
           VERSION: ${{ steps.pom.outputs.version }}
           TAG: ${{ steps.pom.outputs.tag }}
@@ -76,17 +117,17 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # Compila, ejecuta los tests, genera fuentes y JavaDoc, y sube todo.
-      # Si algo falla aquí no se crea el tag, así que un tag siempre
-      # corresponde a una versión efectivamente publicada.
-      - name: Publicar en GitHub Packages
+      # Compila, pasa los tests, genera fuentes y JavaDoc, firma todo con GPG
+      # y lo sube a Central. Con autoPublish el artefacto queda publicado sin
+      # pasar por el portal, y el paso espera al resultado: si Central lo
+      # rechaza, no se crea el tag.
+      - name: Publicar en Maven Central
         if: steps.gate.outputs.publish == 'true'
         env:
-          MAVEN_USERNAME: ${{ github.actor }}
-          MAVEN_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mvn -B -Prelease deploy \
-            -DaltDeploymentRepository="github::https://maven.pkg.github.com/${{ github.repository }}"
+          MAVEN_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          MAVEN_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: mvn -B -Prelease,central deploy
 
       - name: Crear el tag de la versión
         if: steps.gate.outputs.publish == 'true'

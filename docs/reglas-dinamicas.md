@@ -1,6 +1,6 @@
 # Reglas configurables
 
-Referencia del paquete `com.policyrules.rule.definition`: cómo mover una
+Referencia del paquete `io.github.sebas2409.policyrules.rule.definition`: cómo mover una
 condición fuera del código sin perder seguridad de tipos y sin permitir que la
 configuración introduzca comportamiento arbitrario.
 
