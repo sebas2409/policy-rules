@@ -73,14 +73,14 @@ Published on **Maven Central**: no token and no extra repository needed.
 <dependency>
     <groupId>io.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("io.github.sebas2409:policy-rules:1.0.1")
+implementation("io.github.sebas2409:policy-rules:1.1.0")
 ```
 
 Requires **Java 25**. The library declares the automatic module name

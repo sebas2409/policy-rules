@@ -151,12 +151,12 @@ No token, no extra repositories:
 <dependency>
     <groupId>io.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
 ```kotlin
-implementation("io.github.sebas2409:policy-rules:1.0.1")
+implementation("io.github.sebas2409:policy-rules:1.1.0")
 ```
 
 The consuming project needs **Java 25**.
