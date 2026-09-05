@@ -109,6 +109,15 @@
                         <configuration>
                             <doclint>all</doclint>
                             <quiet>true</quiet>
+                            <!--
+                                Sin esto, el Automatic-Module-Name del manifiesto
+                                hace que el plugin trate el proyecto como modular
+                                y genere un patch-module con valor null y sin
+                                sourcepath, con lo que javadoc falla con
+                                "No source files for package com.policyrules".
+                                En modo classpath la documentación sale completa.
+                            -->
+                            <legacyMode>true</legacyMode>
                         </configuration>
                         <executions>
                             <execution>
