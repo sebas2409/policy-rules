@@ -1,5 +1,7 @@
 # policy-rules
 
+[![CI](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sebas2409/policy-rules/actions/workflows/ci.yml)
+
 Librería Java para expresar **reglas de negocio** y **políticas** como objetos
 componibles, incluyendo reglas cuya forma se decide **en configuración** y no en
 el código.
@@ -149,12 +151,12 @@ canBeConfirmed.enforce(booking);   // lanza PolicyViolationException si deniega
 
 ## Los cuatro conceptos
 
-| Tipo | Responde a | Contiene |
-|------|-----------|----------|
-| `Rule<T>` | *¿se cumple la condición?* | un `boolean`, nada más |
-| `Policy<T>` | *¿puede ocurrir esto?* | una condición + el motivo de denegarla |
-| `PolicyResult` | *¿qué ha pasado?* | la lista de motivos (vacía = permitido) |
-| `PolicyViolation` | *¿por qué no?* | código estable, mensaje y metadatos |
+| Tipo              | Responde a                 | Contiene                                |
+|-------------------|----------------------------|-----------------------------------------|
+| `Rule<T>`         | *¿se cumple la condición?* | un `boolean`, nada más                  |
+| `Policy<T>`       | *¿puede ocurrir esto?*     | una condición + el motivo de denegarla  |
+| `PolicyResult`    | *¿qué ha pasado?*          | la lista de motivos (vacía = permitido) |
+| `PolicyViolation` | *¿por qué no?*             | código estable, mensaje y metadatos     |
 
 Dos decisiones de diseño que conviene entender antes de usarla:
 
@@ -279,15 +281,15 @@ los patrones listos para copiar:
 
 ## Documentación
 
-| Documento | Contenido |
-|-----------|-----------|
-| [docs/primeros-pasos.md](docs/primeros-pasos.md) | De cero a una política compuesta, paso a paso |
-| [docs/politicas.md](docs/politicas.md) | Políticas, resultados, violaciones y composición |
-| [docs/reglas-dinamicas.md](docs/reglas-dinamicas.md) | Registro, factorías, parámetros y compilación |
-| [docs/formato-de-reglas.md](docs/formato-de-reglas.md) | Especificación del documento de configuración |
-| [docs/integracion.md](docs/integracion.md) | Observabilidad, persistencia, caché, Spring y tests |
-| [docs/diseno.md](docs/diseno.md) | Decisiones de diseño y sus alternativas descartadas |
-| [docs/publicacion.md](docs/publicacion.md) | Flujo de release, workflows y cómo consumir el paquete |
+| Documento                                              | Contenido                                              |
+|--------------------------------------------------------|--------------------------------------------------------|
+| [docs/primeros-pasos.md](docs/primeros-pasos.md)       | De cero a una política compuesta, paso a paso          |
+| [docs/politicas.md](docs/politicas.md)                 | Políticas, resultados, violaciones y composición       |
+| [docs/reglas-dinamicas.md](docs/reglas-dinamicas.md)   | Registro, factorías, parámetros y compilación          |
+| [docs/formato-de-reglas.md](docs/formato-de-reglas.md) | Especificación del documento de configuración          |
+| [docs/integracion.md](docs/integracion.md)             | Observabilidad, persistencia, caché, Spring y tests    |
+| [docs/diseno.md](docs/diseno.md)                       | Decisiones de diseño y sus alternativas descartadas    |
+| [docs/publicacion.md](docs/publicacion.md)             | Flujo de release, workflows y cómo consumir el paquete |
 
 El JavaDoc es la referencia detallada de cada tipo; se genera con
 `mvn -Prelease javadoc:javadoc` y queda en `target/site/apidocs`.
