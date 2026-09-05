@@ -2,6 +2,8 @@ package io.github.sebas2409.policyrules.rule.definition;
 
 import io.github.sebas2409.policyrules.rule.Rule;
 import io.github.sebas2409.policyrules.rule.Rules;
+import io.github.sebas2409.policyrules.rule.trace.ExplainableRule;
+import io.github.sebas2409.policyrules.rule.trace.ExplainableRules;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,9 +37,16 @@ import java.util.Objects;
  * when the stored definition changes. Because a compiled rule is immutable, a
  * cached instance can be shared by all threads.</p>
  *
+ * <h2>Explaining a decision</h2>
+ * <p>{@link #compileExplainable(RuleDefinition)} produces the same rule, able
+ * to report which node decided an evaluation. It is the compiler, not the
+ * registered factories, that names every node, so adding a rule type never
+ * involves thinking about traces.</p>
+ *
  * @param <T> context type consumed by the produced rules
  * @see RuleRegistry
  * @see RuleDefinition
+ * @see ExplainableRule
  */
 public final class RuleCompiler<T> {
 
@@ -85,10 +94,68 @@ public final class RuleCompiler<T> {
         };
     }
 
+    /**
+     * Compiles a definition tree into a rule that can explain its answers.
+     *
+     * <p>The result is an ordinary {@link Rule}, accepted anywhere a rule is,
+     * that additionally reports a {@link io.github.sebas2409.policyrules.rule.trace.RuleTrace}
+     * mirroring this definition: one node per operator, one leaf per atomic
+     * rule, each labelled with the type and the parameters it was compiled
+     * from.</p>
+     *
+     * {@snippet lang = "java":
+     * ExplainableRule<Customer> eligible = compiler.compileExplainable(definition);
+     *
+     * // On the hot path, nothing changes and nothing is allocated:
+     * boolean ok = eligible.matches(customer);
+     *
+     * // When someone asks why:
+     * RuleTrace trace = eligible.explain(customer);
+     *}
+     *
+     * <p>Rule types registered in the {@link RuleRegistry} need no change: the
+     * label and the parameters of a leaf come from the definition, not from the
+     * factory that built it.</p>
+     *
+     * @param definition definition loaded from the external source
+     * @return the executable rule, able to explain itself
+     * @throws NullPointerException       if {@code definition} is null
+     * @throws UnknownRuleTypeException   if an atomic type is not registered
+     * @throws RuleConfigurationException if a factory rejects its parameters
+     */
+    public ExplainableRule<T> compileExplainable(RuleDefinition definition) {
+        Objects.requireNonNull(definition, "definition must not be null");
+        return switch (definition) {
+
+            case AtomicRuleDefinition atomic -> ExplainableRules.of(
+                    atomic.type(),
+                    atomic.parameters(),
+                    registry.create(atomic.type(), RuleParameters.of(atomic.parameters()))
+            );
+
+            case AndRuleDefinition and ->
+                    ExplainableRules.and(compileAllExplainable(and.children()));
+
+            case OrRuleDefinition or ->
+                    ExplainableRules.or(compileAllExplainable(or.children()));
+
+            case NotRuleDefinition not ->
+                    ExplainableRules.not(compileExplainable(not.child()));
+        };
+    }
+
     private List<Rule<T>> compileAll(List<RuleDefinition> children) {
         var compiled = new ArrayList<Rule<T>>(children.size());
         for (var child : children) {
             compiled.add(compile(child));
+        }
+        return compiled;
+    }
+
+    private List<ExplainableRule<T>> compileAllExplainable(List<RuleDefinition> children) {
+        var compiled = new ArrayList<ExplainableRule<T>>(children.size());
+        for (var child : children) {
+            compiled.add(compileExplainable(child));
         }
         return compiled;
     }

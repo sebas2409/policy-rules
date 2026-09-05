@@ -226,6 +226,7 @@ Full guide in [docs/dynamic-rules.md](docs/dynamic-rules.md), format spec in
 io.github.sebas2409.policyrules.policy            Business decisions
     Policy<T>                       id() + evaluate(ctx) + enforce(ctx)
     Policies                        require, forbid, allOf, firstFailureOf, adapt, allow, deny
+                                    requireExplained, forbidExplained
     PolicyResult                    allowed/denied, violations, codes, combine, requireAllowed
     PolicyViolation                 code + message + metadata
     PolicyViolationException        what the application boundary throws
@@ -242,6 +243,11 @@ io.github.sebas2409.policyrules.rule.definition   Rules from configuration
     RuleFactory<T>                  builds a rule from its parameters
     RuleParameters                  type-safe parameter reading
     RuleConfigurationException      + UnknownRuleType / RuleParameter / RuleDefinitionFormat
+
+io.github.sebas2409.policyrules.rule.trace        Explaining a decision
+    ExplainableRule<T>              a Rule that also answers explain(ctx)
+    ExplainableRules                of, and, or, not
+    RuleTrace                       label + outcome + parameters + children, culprit, format
 ```
 
 ---
@@ -273,6 +279,7 @@ ready-to-copy patterns:
 | [docs/policies.md](docs/policies.md) | Policies, results, violations and composition |
 | [docs/dynamic-rules.md](docs/dynamic-rules.md) | Registry, factories, parameters and compilation |
 | [docs/rule-definition-format.md](docs/rule-definition-format.md) | Specification of the configuration document |
+| [docs/tracing.md](docs/tracing.md) | Explaining which node of a rule decided an evaluation |
 | [docs/integration.md](docs/integration.md) | Observability, persistence, caching, Spring and tests |
 | [docs/design.md](docs/design.md) | Design decisions and the alternatives that were discarded |
 | [docs/publishing.md](docs/publishing.md) | Release flow, workflows and how to consume the artifact |

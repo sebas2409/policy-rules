@@ -1,6 +1,8 @@
 package io.github.sebas2409.policyrules.policy;
 
 import io.github.sebas2409.policyrules.rule.Rule;
+import io.github.sebas2409.policyrules.rule.trace.ExplainableRule;
+import io.github.sebas2409.policyrules.rule.trace.ExplainableRules;
 
 import java.util.List;
 import java.util.Objects;
@@ -41,10 +43,32 @@ import java.util.function.Function;
  *         List.of(active, notCancelled, withinWeeklyLimit));
  *}
  *
+ * <h2>Explaining a denial</h2>
+ * <p>{@link #requireExplained(String, ExplainableRule, String, String)} builds
+ * the same policy over a rule that can report which node decided the
+ * evaluation, and attaches that report to the violation.</p>
+ *
  * @see Policy
  * @see PolicyResult
  */
 public final class Policies {
+
+    /**
+     * Metadata key under which an explained policy stores the full
+     * {@link io.github.sebas2409.policyrules.rule.trace.RuleTrace} of a denial.
+     *
+     * <p>A violation factory that uses this key for its own data will have it
+     * overwritten.</p>
+     */
+    public static final String TRACE_METADATA_KEY = "trace";
+
+    /**
+     * Metadata key under which an explained policy stores the node that
+     * accounts for a denial, when a single node accounts for it.
+     *
+     * @see io.github.sebas2409.policyrules.rule.trace.RuleTrace#culprit()
+     */
+    public static final String CULPRIT_METADATA_KEY = "culprit";
 
     private Policies() {
     }
@@ -144,6 +168,110 @@ public final class Policies {
     ) {
         Objects.requireNonNull(rule, "rule must not be null");
         return new RequiredPolicy<>(id, rule.not(), violationFactory);
+    }
+
+    /**
+     * Creates a policy that allows a context only when the rule holds, and
+     * reports how the rule decided.
+     *
+     * <p>The behaviour is that of
+     * {@link #require(String, Rule, String, String)}, plus two entries in the
+     * metadata of the violation when the context is denied:</p>
+     *
+     * <ul>
+     *   <li>{@link #TRACE_METADATA_KEY}, the whole
+     *       {@link io.github.sebas2409.policyrules.rule.trace.RuleTrace}.</li>
+     *   <li>{@link #CULPRIT_METADATA_KEY}, the node that accounts for the
+     *       denial, when a single node accounts for it.</li>
+     * </ul>
+     *
+     * {@snippet lang = "java":
+     * Policy<Application> withinLimits = Policies.requireExplained(
+     *         "within-limits",
+     *         compiler.compileExplainable(definition),
+     *         "ABOVE_LIMIT", "The application is outside the accepted limits");
+     *
+     * PolicyResult result = withinLimits.evaluate(application);
+     * result.firstViolation()
+     *         .map(violation -> violation.metadata().get(Policies.CULPRIT_METADATA_KEY))
+     *         .ifPresent(System.out::println);
+     *}
+     *
+     * <p>The rule is evaluated once, and the trace describes that very
+     * evaluation. Building a trace costs an allocation per node, so this
+     * factory is for policies whose denials someone reads; a hot path with no
+     * reader keeps using {@link #require(String, Rule, String, String)}.</p>
+     *
+     * @param id      stable, non-blank policy identifier
+     * @param rule    condition that must hold, able to explain itself
+     * @param code    violation code reported when it does not hold
+     * @param message violation message reported when it does not hold
+     * @param <T>     context type
+     * @return the policy
+     * @throws NullPointerException     if an argument is null
+     * @throws IllegalArgumentException if an argument is blank
+     */
+    public static <T> Policy<T> requireExplained(
+            String id,
+            ExplainableRule<T> rule,
+            String code,
+            String message
+    ) {
+        var violation = new PolicyViolation(code, message);
+        return new ExplainedPolicy<>(id, rule, context -> violation);
+    }
+
+    /**
+     * Creates a policy that allows a context only when the rule holds, with an
+     * explanation built from the denied context and the trace of the rule.
+     *
+     * <p>The violation returned by the factory is enriched with the same
+     * metadata described in
+     * {@link #requireExplained(String, ExplainableRule, String, String)}.</p>
+     *
+     * @param id               stable, non-blank policy identifier
+     * @param rule             condition that must hold, able to explain itself
+     * @param violationFactory builds the violation from the denied context;
+     *                         it must not return null
+     * @param <T>              context type
+     * @return the policy
+     * @throws NullPointerException     if an argument is null
+     * @throws IllegalArgumentException if {@code id} is blank
+     */
+    public static <T> Policy<T> requireExplained(
+            String id,
+            ExplainableRule<T> rule,
+            Function<T, PolicyViolation> violationFactory
+    ) {
+        return new ExplainedPolicy<>(id, rule, violationFactory);
+    }
+
+    /**
+     * Creates a policy that denies a context when the rule holds, and reports
+     * how the rule decided.
+     *
+     * <p>The mirror image of
+     * {@link #requireExplained(String, ExplainableRule, String, String)}. The
+     * negation stays visible in the trace: the reported node is the negation,
+     * and below it the rule that held.</p>
+     *
+     * @param id      stable, non-blank policy identifier
+     * @param rule    condition that must not hold, able to explain itself
+     * @param code    violation code reported when it holds
+     * @param message violation message reported when it holds
+     * @param <T>     context type
+     * @return the policy
+     * @throws NullPointerException     if an argument is null
+     * @throws IllegalArgumentException if an argument is blank
+     */
+    public static <T> Policy<T> forbidExplained(
+            String id,
+            ExplainableRule<T> rule,
+            String code,
+            String message
+    ) {
+        Objects.requireNonNull(rule, "rule must not be null");
+        return requireExplained(id, ExplainableRules.not(rule), code, message);
     }
 
     /**
