@@ -68,7 +68,7 @@ Maven:
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/OWNER/policy-rules</url>
+        <url>https://maven.pkg.github.com/sebas2409/policy-rules</url>
     </repository>
 </repositories>
 
@@ -85,7 +85,7 @@ Gradle:
 
 ```kotlin
 repositories {
-    maven { url = uri("https://maven.pkg.github.com/OWNER/policy-rules") }
+    maven { url = uri("https://maven.pkg.github.com/sebas2409/policy-rules") }
 }
 
 dependencies {

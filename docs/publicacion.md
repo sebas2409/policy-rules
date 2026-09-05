@@ -82,7 +82,7 @@ En el proyecto que use la librería:
 <repositories>
     <repository>
         <id>github</id>
-        <url>https://maven.pkg.github.com/OWNER/policy-rules</url>
+        <url>https://maven.pkg.github.com/sebas2409/policy-rules</url>
     </repository>
 </repositories>
 
@@ -121,7 +121,7 @@ En Gradle:
 repositories {
     mavenCentral()
     maven {
-        url = uri("https://maven.pkg.github.com/OWNER/policy-rules")
+        url = uri("https://maven.pkg.github.com/sebas2409/policy-rules")
         credentials {
             username = System.getenv("GITHUB_ACTOR")
             password = System.getenv("GITHUB_TOKEN")
@@ -230,7 +230,7 @@ El consumidor añade:
 </repository>
 
 <dependency>
-    <groupId>com.github.OWNER</groupId>
+    <groupId>com.github.sebas2409</groupId>
     <artifactId>policy-rules</artifactId>
     <version>v1.0.0</version>
 </dependency>
@@ -272,7 +272,7 @@ mergea a `main` o lánzalo a mano.
 
 ```bash
 mvn -B -Prelease deploy \
-    -DaltDeploymentRepository="github::https://maven.pkg.github.com/OWNER/policy-rules"
+    -DaltDeploymentRepository="github::https://maven.pkg.github.com/sebas2409/policy-rules"
 ```
 
 con el `server` `github` configurado en tu `settings.xml`.

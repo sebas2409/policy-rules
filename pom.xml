@@ -17,16 +17,15 @@
     </description>
 
     <!--
-        TODO: sustituir OWNER por el usuario u organización de GitHub que aloja
-        el repositorio. Estos metadatos no hacen falta para publicar en GitHub
-        Packages, pero sí para Maven Central. Ver docs/publicacion.md.
+        Estos metadatos no hacen falta para publicar en GitHub Packages, pero sí
+        para Maven Central. Ver docs/publicacion.md.
     -->
-    <url>https://github.com/OWNER/policy-rules</url>
+    <url>https://github.com/sebas2409/policy-rules</url>
 
     <scm>
-        <url>https://github.com/OWNER/policy-rules</url>
-        <connection>scm:git:https://github.com/OWNER/policy-rules.git</connection>
-        <developerConnection>scm:git:git@github.com:OWNER/policy-rules.git</developerConnection>
+        <url>https://github.com/sebas2409/policy-rules</url>
+        <connection>scm:git:https://github.com/sebas2409/policy-rules.git</connection>
+        <developerConnection>scm:git:git@github.com:sebas2409/policy-rules.git</developerConnection>
         <tag>HEAD</tag>
     </scm>
 
